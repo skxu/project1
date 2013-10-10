@@ -64,7 +64,8 @@ class RIPRouter (Entity):
                     distance = self.pathTable[src][dst] + 1
                     if (not updatedPathDist.has_key(dst)) or distance < updatedPathDist[dst]: 
                         updatedPathDist[dst] = distance
-                        updatedTable[dst] = self.forwardingTable[src]
+                        if self.forwardingTable.has_key(src):
+                            updatedTable[dst] = self.forwardingTable[src]
                     elif distance == self.minPathDist[dst]: #equal distance, use smaller port
                         if self.forwardingTable[src] < updatedTable[dst]:
                             updatedTable[dst] = self.forwardingTable[src]
@@ -85,9 +86,11 @@ class RIPRouter (Entity):
             packet = RoutingUpdate()                
             for dst in self.minPathDist.keys():
                 if dst != src:
-                    if self.forwardingTable[dst] == self.forwardingTable[src]:   
+                    if self.forwardingTable[dst] == self.forwardingTable[src]:
+                        print "poison"   
                         packet.add_destination(dst, 100) #set distance to 'infinity' for poison reverse
                     else:
+                        print "not poison"
                         packet.add_destination(dst, self.minPathDist[dst])
             
             self.send(packet, self.forwardingTable[src])
