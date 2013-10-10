@@ -59,7 +59,10 @@ class RIPRouter (Entity):
         updatedTable = {}
         for src in self.pathTable.keys(): #each entity
             updatedPathDist[src] = 1
-            updatedTable[src] = self.forwardingTable[src]
+            if self.forwardingTable.has_key(src):
+                updatedTable[src] = self.forwardingTable[src]
+            else:
+                print "key error"
             if self.pathTable[src] == {}:
                 pass
             else:
