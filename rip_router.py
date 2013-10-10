@@ -21,14 +21,12 @@ class RIPRouter (Entity):
         #route to handlers by packet type
         if isinstance(packet , DiscoveryPacket):
             self.discoveryHandler(packet, port)
-
         elif isinstance(packet, RoutingUpdate):
             self.routingUpdateHandler(packet, port)
-        
         else:
             if packet.dst in self.forwardingTable:
                 self.send(packet, self.forwardingTable[packet.dst])
-            else:
+            else: #destination not in table
                 pass
     
     def discoveryHandler(self, packet, port):
@@ -54,6 +52,7 @@ class RIPRouter (Entity):
 
     #helper function to calculate minimum distances to destinations
     #returns true if forwarding table or path distance changes
+    #nested loop is O(n^2)
     def calcMinDist(self):
         updatedPathDist = {}
         updatedTable = {}
@@ -61,8 +60,6 @@ class RIPRouter (Entity):
             updatedPathDist[src] = 1
             if self.forwardingTable.has_key(src):
                 updatedTable[src] = self.forwardingTable[src]
-            else:
-                print "key error"
             if self.pathTable[src] == {}:
                 pass
             else:
@@ -92,7 +89,7 @@ class RIPRouter (Entity):
             for dst in self.minPathDist.keys():
                 if dst != src:
                     if self.forwardingTable[dst] == self.forwardingTable[src]:   
-                        packet.add_destination(dst, 100)
+                        packet.add_destination(dst, 100) #set distance to 'infinity' for poison reverse
                     else:
                         packet.add_destination(dst, self.minPathDist[dst])
             
