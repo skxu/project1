@@ -8,14 +8,10 @@ Create your RIP router in this file.
 class RIPRouter (Entity):
     
     def __init__(self):
-        #dst:port of next hop
-        self.forwardingTable = {}
-
-        #dst:hop distance
-        self.minPathDist = {}
-
-        #src:{destination,distance}
-        self.pathTable = defaultdict(lambda: dict)
+        #initiate data structures
+        self.forwardingTable = {} #dst:port of next hop
+        self.minPathDist = {} #dst:hop distance
+        self.pathTable = defaultdict(lambda: dict) #src:{destination,distance}
         
     def handle_rx (self, packet, port):
         #route to handlers by packet type
@@ -30,14 +26,15 @@ class RIPRouter (Entity):
                 pass
     
     def discoveryHandler(self, packet, port):
-        if packet.is_link_up: #link up
+        if packet.is_link_up: #link up, add to forwarding table
             self.minPathDist[packet.src] = 1
             self.forwardingTable[packet.src] = port
             self.pathTable[packet.src] = {}
-        else: #link down
+        else: #link down, remove from forwarding table
             self.pathTable.pop(packet.src, None)
             self.minPathDist.pop(packet.src, None)
-            self.forwardingTable.pop(packet.src, None)    
+            self.forwardingTable.pop(packet.src, None)
+        #new entity or removed entity -> recalculate optimal routes/distances    
         if self.calcMinDist() == True: #if true, send routing update
             self.updateRouting()
 
@@ -46,12 +43,12 @@ class RIPRouter (Entity):
         for dst in packet.all_dests():
             updatedPathTable[dst] = packet.get_distance(dst) 
         self.pathTable[packet.src] = updatedPathTable 
-        if self.calcMinDist() == True: #if true need to update routing
+        if self.calcMinDist() == True: #if true, send routing update
             self.updateRouting()
 
 
     #helper function to calculate minimum distances to destinations
-    #returns true if forwarding table or path distance changes
+    #returns True if forwarding table or path distance changes
     #nested loop is O(n^2)
     def calcMinDist(self):
         updatedPathDist = {}
@@ -82,7 +79,7 @@ class RIPRouter (Entity):
             self.forwardingTable = updatedTable
             return True
 
-
+    #inform entities of routing update
     def updateRouting(self):
         for src in self.pathTable.keys():
             packet = RoutingUpdate()                
