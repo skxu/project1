@@ -9,9 +9,14 @@ class RIPRouter (Entity):
     
     def __init__(self):
         #initiate data structures
-        self.forwardingTable = {} #dst:port of next hop
-        self.minPathDist = {} #dst:hop distance
-        self.pathTable = defaultdict(lambda: dict) #src:{destination,distance}
+        #dst:{neighbor,total distance}
+        self.forwardingTable = {} 
+        
+        #srcneighbors:{destination:distance}
+        self.pathTable = {} 
+        
+        #src:{src:ports}
+        self.portTable = {}
         
     def handle_rx (self, packet, port):
         #route to handlers by packet type
@@ -20,29 +25,31 @@ class RIPRouter (Entity):
         elif isinstance(packet, RoutingUpdate):
             self.routingUpdateHandler(packet, port)
         else:
+            #print packet.src.name
             if packet.dst in self.forwardingTable:
-                self.send(packet, self.forwardingTable[packet.dst])
+                self.send(packet, self.portTable[self.forwardingTable[packet.dst][0]])
             else: #destination not in table
                 pass
     
     def discoveryHandler(self, packet, port):
+        print ("Discovery", packet.src.name)
         if packet.is_link_up: #link up, add to forwarding table
-            self.minPathDist[packet.src] = 1
-            self.forwardingTable[packet.src] = port
-            self.pathTable[packet.src] = {}
+            self.portTable[packet.src] = port
+            if packet.src not in self.pathTable:
+                self.pathTable[packet.src] = {}
         else: #link down, remove from forwarding table
             self.pathTable.pop(packet.src, None)
-            self.minPathDist.pop(packet.src, None)
-            self.forwardingTable.pop(packet.src, None)
+            self.portTable.pop(packet.src, None)
         #new entity or removed entity -> recalculate optimal routes/distances    
         if self.calcMinDist() == True: #if true, send routing update
             self.updateRouting()
 
     def routingUpdateHandler(self, packet, port):
-        updatedPathTable = {}
+        if packet.src not in self.pathTable:
+            return
+        self.pathTable[packet.src] = {}
         for dst in packet.all_dests():
-            updatedPathTable[dst] = packet.get_distance(dst) 
-        self.pathTable[packet.src] = updatedPathTable 
+            self.pathTable[packet.src][dst] = packet.get_distance(dst)
         if self.calcMinDist() == True: #if true, send routing update
             self.updateRouting()
 
@@ -51,49 +58,58 @@ class RIPRouter (Entity):
     #returns True if forwarding table or path distance changes
     #nested loop is O(n^2)
     def calcMinDist(self):
+        #print "recalcing Distance"
         updatedPathDist = {}
         updatedTable = {}
-        for src in self.pathTable.keys(): #each entity
-            updatedPathDist[src] = 1
+        '''
+        for src in self.pathTable.keys():
+            for dst in self.pathTable[src].keys():
+                if self.pathTable[src][dst] >= 100:
+                    self.pathTable[src].pop(dst, None)
+                    
+
+
             if self.forwardingTable.has_key(src):
                 updatedTable[src] = self.forwardingTable[src]
-            if self.pathTable[src] == {}:
-                pass
-            else:
-                for dst in self.pathTable[src].keys():
-                    distance = self.pathTable[src][dst] + 1
-                    if (not updatedPathDist.has_key(dst)) or distance < updatedPathDist[dst]: 
-                        updatedPathDist[dst] = distance
-                        if self.forwardingTable.has_key(src):
-                            updatedTable[dst] = self.forwardingTable[src]
-                    elif distance == self.minPathDist[dst]: #equal distance, use smaller port
-                        if self.forwardingTable[src] < updatedTable[dst]:
-                            updatedTable[dst] = self.forwardingTable[src]
-                    else:
-                        pass
-        if self.minPathDist != updatedPathDist or self.forwardingTable != updatedTable:
-            self.minPathDist = updatedPathDist
-            self.forwardingTable = updatedTable
-            return False
-        else:
-            self.minPathDist = updatedPathDist
+                    '''
+        for src in self.pathTable.keys(): #each entity
+            updatedPathDist[src] = 1
+            
+            for dst in self.pathTable[src].keys():
+                distance = self.pathTable[src][dst] + 1
+                if self.pathTable[src][dst] < 100:
+                    if ((not updatedTable.has_key(dst)) or distance < updatedTable[dst][1]): 
+                        updatedTable[dst] = (src, distance)
+                elif updatedTable.has_key(dst) and self.pathTable.has_key(src) and distance == updatedTable[dst][1]: #equal distance, use smaller port
+                    if updatedTable.has_key(dst) and self.portTable[updatedTable[dst][0]] < self.portTable[src]:
+                        updatedTable[dst] = (updatedTable[dst][0], distance)
+                else:
+                    pass
+        if self.forwardingTable != updatedTable:
             self.forwardingTable = updatedTable
             return True
+        else:
+            self.fowardingTable = updatedTable
+            return False
 
     #inform entities of routing update
     def updateRouting(self):
         for src in self.pathTable.keys():
-            packet = RoutingUpdate()                
-            for dst in self.minPathDist.keys():
-                if dst != src:
-                    if self.forwardingTable[dst] == self.forwardingTable[src]:
-                        print "poison"   
-                        packet.add_destination(dst, 100) #set distance to 'infinity' for poison reverse
+            packet = RoutingUpdate()
+            if not isinstance(src, HostEntity):                
+                for dst in self.forwardingTable:
+                    if self.forwardingTable[dst][0] == src:
+                            #print "poison"
+                        packet.add_destination(dst, 100)   
+                         #set distance to 'infinity' for poison reverse
+                        pass
+                            
                     else:
-                        print "not poison"
-                        packet.add_destination(dst, self.minPathDist[dst])
+                            #print "not poison"
+                        packet.add_destination(dst, self.forwardingTable[dst][1])
+                self.send(packet, self.portTable[src])
+                
             
-            self.send(packet, self.forwardingTable[src])
 
         
         
